@@ -1,0 +1,147 @@
+---
+title: "Practical Machine Learning"
+output: html_document
+---
+#Intro
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+##Libraries utilized
+```{r,results='hide'}
+library(caret); library(rpart)
+library(rattle); library(rpart.plot)
+library(randomForest); library(RColorBrewer)
+library(corrplot)
+```
+
+##Load the training and test data sets
+```{r}
+training_data <- read.csv("./pml-training.csv")
+testing_data <- read.csv("./pml-testing.csv")
+
+dim(training_data);dim(testing_data)
+```
+
+##Clean up training data set 
+This is done by removing missing values
+```{r}
+clean_train <- training_data
+# pull out the "classe" field
+train_classe <- as.data.frame(clean_train[, max(length(clean_train))])
+colnames(train_classe) <- "classe"
+
+# function to remove unnecessary columns
+remove <- function (x) {
+  remove <- grepl("^X|timestamp|window", names(x))
+}
+
+clean_train <- clean_train[,colSums(is.na(clean_train)) == FALSE]
+# applying the remove function  to the new clean data set
+clean_train <- clean_train[,!remove(clean_train)]
+# converting columns to numeric values
+clean_train <- clean_train[, sapply(clean_train, is.numeric)]
+# add the "classe" values back in
+clean_train <- cbind(clean_train, train_classe)
+```
+##Clean up testing data set by removing missing values
+This is done by filtering down to complete objects
+```{r}
+clean_test <- testing_data
+# pulls out the grades or "classe"
+clean_test <- clean_test[, -max(length(clean_test))]
+clean_test <- clean_test[, colSums(is.na(clean_test)) == 0]
+# function to remove unnecessary columns
+
+remove <- function (x) {
+  remove <- grepl("^X|timestamp|window", names(x))
+}
+# applying the remove function
+clean_test <- clean_test[,!remove(clean_test)]
+#Convert columns to numeric values
+clean_test <- clean_test[, sapply(clean_test, is.numeric)]
+
+```
+
+##Set the seed 
+This is so that the results can be reproduced
+```{r}
+set.seed(532)
+```
+
+##Partition training and cross validation sets
+```{r}
+inTrain <- createDataPartition(y = clean_train$classe, p = .60, list = FALSE)
+```
+
+The data was split as follows. The initial 60% given to training data remaining 40% went to cross_validate set,
+```{r}
+clean_train <- clean_train[inTrain,]
+cross_validate <- clean_train[-inTrain,]
+#clean_train
+
+plot(clean_train$classe, col="blue", main="Levels of Classe", xlab="classe levels", ylab="Frequency")
+```
+#Build the model
+RandomForest was chosen due to its ability to produce fairly strong predictions.
+```{r}
+
+model <- train(classe ~ ., data = clean_train, method = "rf", 
+               trControl = trainControl(method = "cv", 5), 
+               ntree = 250)
+model
+```
+
+##Predictions based on cross validated data
+The model is now applied to the cross_validate data set.
+```{r}
+predict_it <- predict(model,cross_validate)
+
+confusionMatrix(cross_validate$classe,predict_it)
+```
+
+Check the accuracy of the model
+```{r}
+model.accuracy <- postResample(predict_it, cross_validate$classe)
+model.accuracy
+```
+
+Out of sample error
+```{r}
+samp.error <- 1 - 
+  as.numeric(confusionMatrix(
+    cross_validate$classe, 
+    predict_it)$overall[1])
+samp.error
+
+
+clean_test$prediction <- predict(model, clean_test)
+clean_test$prediction
+```
+
+## Decision Tree
+```{r}
+tree <- rpart(classe ~ ., data = clean_train, method = "class") 
+fancytree <- fancyRpartPlot(tree)
+basictree <- prp(tree)
+```
+
+## Prediction output
+```{r}
+#pml_write_files = function(x){
+#  n = length(x)
+#  for(i in 1:n){
+#    filename = paste0("problem_id_",i,".txt")
+#    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+#  }
+#}
+print(clean_test$prediction)
+
+```
+## Knitting function
+
+```{r}
+#library(knitr)
+
+#build.report <- function(x) {
+#  knit2html(x, "project.html")
+#}
+```
